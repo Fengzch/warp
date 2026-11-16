@@ -309,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Toolchain paths
     group_toolchain = parser.add_argument_group("Toolchain Paths")
+    group_toolchain.add_argument("--rocm-path", help="Path to an AMD ROCm or Hygon DTK HIP SDK")
     group_toolchain.add_argument(
         "--msvc-path",
         type=str,
@@ -332,6 +333,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # Build options
     group_build = parser.add_argument_group("Build Options")
+    group_build.add_argument("--hip", action=argparse.BooleanOptionalAction, default=False, help="Build with HIP instead of CUDA")
+    group_build.add_argument("--hip-arch", help="HIP target architectures, separated by commas (for example gfx936)")
     group_build.add_argument(
         "--cuda",
         action=argparse.BooleanOptionalAction,
@@ -471,8 +474,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Warp build error: {e}")
             return 1
 
+    args.enable_hip = args.hip
+    if args.enable_hip:
+        if platform.system() != "Linux":
+            print("Warp build error: HIP builds currently require Linux")
+            return 1
+        try:
+            args.rocm_path = build_dll.find_rocm_sdk(args.rocm_path)
+            if not args.rocm_path:
+                raise RuntimeError("HIP SDK not found; specify --rocm-path, ROCM_PATH, or DTK_ROOT")
+            build_dll.hip_arch_flags(args)
+        except RuntimeError as e:
+            print(f"Warp build error: {e}")
+            return 1
+        args.use_libmathdx = False
+        print(f"Building with HIP SDK: {args.rocm_path}")
+
     # setup CUDA Toolkit path
-    if platform.system() == "Darwin" or not args.cuda:
+    if platform.system() == "Darwin" or not args.cuda or args.enable_hip:
         if not args.cuda:
             print("CUDA support disabled (--no-cuda)")
         args.cuda_path = None
@@ -573,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         warp_cpp_paths = [os.path.join(build_path, cpp) for cpp in cpp_sources]
 
-        if args.cuda_path is None:
+        if args.cuda_path is None and not args.enable_hip:
             if args.cuda:
                 print("Warning: CUDA toolchain not found, building without CUDA support")
             warp_cu_paths = None
@@ -596,7 +615,7 @@ def main(argv: list[str] | None = None) -> int:
             warp_cu_paths = [os.path.join(build_path, cu) for cu in cuda_sources]
 
             # libmathdx is only needed when building with CUDA
-            if args.use_libmathdx and args.libmathdx_path is None:
+            if not args.enable_hip and args.use_libmathdx and args.libmathdx_path is None:
                 print("Error: libmathdx not found. MathDx support is enabled but libmathdx could not be located.")
                 print("  Either:")
                 print("    - Install libmathdx and set LIBMATHDX_HOME environment variable")

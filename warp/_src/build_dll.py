@@ -8,6 +8,7 @@ import functools
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,35 @@ from warp._src.utils import ScopedTimer
 verbose_cmd = True  # print command lines before executing them
 
 MIN_CTK_VERSION = (12, 0)
+
+
+def find_rocm_sdk(explicit_path: str | None = None) -> str | None:
+    """Locate a HIP SDK without assuming AMD ROCm and Hygon DTK are interchangeable."""
+    for candidate in (explicit_path, os.environ.get("ROCM_PATH"), os.environ.get("ROCM_HOME"), os.environ.get("DTK_ROOT")):
+        if candidate:
+            candidate = os.path.abspath(candidate)
+            if not os.path.isfile(os.path.join(candidate, "bin", "hipcc")):
+                raise RuntimeError(f"HIP compiler not found at {candidate}/bin/hipcc")
+            return candidate
+    compiler = shutil.which("hipcc")
+    if compiler:
+        candidate = os.path.dirname(os.path.dirname(os.path.abspath(compiler)))
+        if os.path.isfile(os.path.join(candidate, "bin", "hipcc")):
+            return candidate
+    for candidate in ("/opt/rocm", "/opt/dtk"):
+        if os.path.isfile(os.path.join(candidate, "bin", "hipcc")):
+            return candidate
+    return None
+
+
+def hip_arch_flags(args) -> str:
+    raw = getattr(args, "hip_arch", None) or os.environ.get("HIP_ARCH") or os.environ.get("ROCM_TARGETS")
+    if not raw:
+        raise RuntimeError("Specify --hip-arch (or HIP_ARCH/ROCM_TARGETS); no GPU architecture is assumed")
+    arches = [a for a in re.split(r"[,;\s]+", raw) if a]
+    if not arches or any(not re.fullmatch(r"gfx[0-9a-f]+(?::(?:xnack|sramecc)[+-])*", a) for a in arches):
+        raise RuntimeError(f"Invalid HIP target architectures: {raw}")
+    return " ".join(f"--offload-arch={a}" for a in dict.fromkeys(arches))
 
 # Echoed by our wrapper command before dumping the environment; the MSVC
 # environment script does not emit it.
@@ -594,6 +624,9 @@ def build_dll_for_arch(
     mode = args.mode if (mode is None) else mode
     cuda_home = args.cuda_path
     cuda_cmd = None
+    hip_enabled = bool(getattr(args, "enable_hip", False) and cu_paths)
+    hipcc_cmd = shlex.quote(os.path.join(args.rocm_path, "bin", "hipcc")) if hip_enabled else None
+    nvcc_opts = []
 
     # Derive a unique tag from dll_path for object file names to allow parallel builds
     _obj_tag = "." + os.path.splitext(os.path.basename(dll_path))[0].replace(".", "_")
@@ -617,7 +650,7 @@ def build_dll_for_arch(
 
     native_dir = os.path.join(warp_home, "native")
 
-    if cu_paths:
+    if cu_paths and not hip_enabled:
         # check CUDA Toolkit version
         ctk_version = get_cuda_toolkit_version(cuda_home)
         if ctk_version < MIN_CTK_VERSION:
@@ -829,7 +862,8 @@ def build_dll_for_arch(
         # Build include paths for LLVM and CUDA
         llvm_include_paths = get_llvm_include_paths(args, warp_home_path, mode, arch)
         cpp_includes = format_include_paths(llvm_include_paths, "-I")
-        cuda_includes = f' -I"{cuda_home}/include"' if cu_paths else ""
+        sdk_home = args.rocm_path if hip_enabled else cuda_home
+        cuda_includes = f' -I"{sdk_home}/include"' if cu_paths else ""
         includes = cpp_includes + cuda_includes
 
         if sys.platform == "darwin":
@@ -844,6 +878,8 @@ def build_dll_for_arch(
                 version = ""
 
         cpp_flags = f'-Werror -Wuninitialized {version} --std=c++17 -fno-rtti -DWP_BUILD_DLL -D{cuda_enabled} -D{mathdx_enabled} -D{cuda_compat_enabled} -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -D_GLIBCXX_USE_CXX11_ABI=0 -I"{native_dir}" {includes} '
+        if hip_enabled:
+            cpp_flags += " -D__HIP_PLATFORM_AMD__ "
 
         if mode == "debug":
             cpp_flags += "-Og -g -D_DEBUG -DWP_ENABLE_DEBUG=1"
@@ -889,7 +925,20 @@ def build_dll_for_arch(
                         opt.replace("@filename@", os.path.basename(cu_path).replace(".", "_")) for opt in nvcc_opts
                     ]
 
-                    if cuda_compiler == "nvcc":
+                    if hip_enabled:
+                        hip_mode = "-g -O0 -D_DEBUG -DWP_ENABLE_DEBUG=1" if mode == "debug" else "-O3 -DNDEBUG -DWP_ENABLE_DEBUG=0"
+                        hip_options = " -ffast-math -DWP_FAST_MATH" if args.fast_math else " -ffp-contract=off"
+                        if args.verify_fp:
+                            hip_options += " -DWP_VERIFY_FP"
+                        if args.sanitize:
+                            hip_options += f" -fsanitize={args.sanitize}"
+                        cuda_cmd = (
+                            f'{hipcc_cmd} -x hip -std=c++17 {hip_mode} {hip_arch_flags(args)} '
+                            f'-fPIC -fvisibility=hidden -D_GLIBCXX_USE_CXX11_ABI=0 -DWP_BUILD_DLL '
+                            f'-DWP_ENABLE_CUDA=1 -D__HIP_PLATFORM_AMD__ -D{mathdx_enabled} '
+                            f'-I"{native_dir}" {includes} {hip_options} -o "{cu_out}" -c "{cu_path}"'
+                        )
+                    elif cuda_compiler == "nvcc":
                         if mode == "debug":
                             cuda_cmd = f'{nvcc_cmd} --std=c++17 -g -G -O0 --compiler-options -fPIC,-fvisibility=hidden,-fvisibility-inlines-hidden,-D_GLIBCXX_USE_CXX11_ABI=0 -D_DEBUG -D_ITERATOR_DEBUG_LEVEL=0 -line-info {" ".join(_nvcc_opts)} -DWP_ENABLE_CUDA=1 -I"{native_dir}" -D{mathdx_enabled} {libmathdx_includes} -o "{cu_out}" -c "{cu_path}"'
                         elif mode == "release":
@@ -905,7 +954,13 @@ def build_dll_for_arch(
 
                     ld_inputs.append(quote(cu_out))
 
-                if args.use_dynamic_cuda:
+                if hip_enabled:
+                    for subdir in ("lib", "lib64", "hip/lib"):
+                        lib_dir = os.path.join(args.rocm_path, subdir)
+                        if os.path.isdir(lib_dir):
+                            ld_inputs.append(f'-L{shlex.quote(lib_dir)} -Wl,-rpath,{shlex.quote(lib_dir)}')
+                    ld_inputs.append("-lamdhip64 -lhiprtc -lpthread -ldl -lrt")
+                elif args.use_dynamic_cuda:
                     ld_inputs.append(
                         f'-L"{cuda_home}/lib64" -L"{cuda_home}/lib" -lcudart -lnvrtc -lnvptxcompiler_static -lpthread -ldl -lrt'
                     )
@@ -961,6 +1016,8 @@ def build_dll_for_arch(
 
         with ScopedTimer("link", active=args.verbose):
             origin = "@loader_path" if (sys.platform == "darwin") else "$ORIGIN"
+            if hip_enabled:
+                cpp_compiler, version = hipcc_cmd, ""
             link_cmd = f"{cpp_compiler} {version} -shared -Wl,-rpath,'{origin}' {opt_static_runtime} {opt_undefined} {opt_exported_symbols} {opt_exclude_libs}{sanitize_ld} -o '{dll_path}' {' '.join(ld_inputs + libs)}"
             run_cmd(link_cmd)
 

@@ -211,6 +211,26 @@ build for your system.
 Building from Source
 --------------------
 
+Experimental HIP build
+^^^^^^^^^^^^^^^^^^^^^^
+
+The Linux build driver accepts AMD ROCm and Hygon DTK SDK paths with an explicit HIP target::
+
+    $ python build_lib.py --hip --rocm-path /opt/dtk --hip-arch gfx936 --no-use-libmathdx --no-standalone
+
+This is an experimental build entry point, not a supported installation recipe yet. The native runtime
+and JIT compatibility layer are still being ported and the command does not currently produce a working
+HIP runtime. ``--no-standalone`` omits the separate CPU JIT backend, so it is not suitable for a complete
+installation. Hygon DTK's LLVM libraries must not be substituted for Warp's pinned LLVM SDK.
+
+HIP is opt-in with ``--hip``; existing CUDA and CPU-only builds retain their defaults. The SDK can also
+be selected with ``ROCM_PATH``, ``ROCM_HOME``, or ``DTK_ROOT``. HIP target architectures must be specified
+with ``--hip-arch``, ``HIP_ARCH``, or ``ROCM_TARGETS``; no AMD or Hygon architecture is assumed. MathDx is
+disabled for HIP builds. Validation with one vendor's toolchain does not establish support for another.
+
+CUDA build
+^^^^^^^^^^
+
 For developers who want to build the library themselves, the following tools are required:
 
 * (Windows) Microsoft Visual Studio, minimum version 2019
