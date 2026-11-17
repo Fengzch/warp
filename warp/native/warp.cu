@@ -3666,11 +3666,33 @@ bool wp_cuda_graph_create_exec(void* context, void* stream, void* graph, void** 
     // Usually uploading the graph explicitly is optional, but when updating graph nodes (e.g., indirect dispatch)
     // then the upload is required because otherwise the graph nodes that get updated might not yet be uploaded, which
     // results in undefined behavior.
-#if !WP_ENABLE_HIP
-    CUstream cuda_stream = static_cast<CUstream>(stream);
-    if (!check_cuda(cudaGraphUpload(graph_exec, cuda_stream)))
+    bool skip_explicit_upload = false;
+#if WP_ENABLE_HIP
+    // DTK crashes while uploading graphs that contain stream-ordered allocation nodes.
+    // Keep explicit upload for other graphs because indirect dispatch updates require it.
+    size_t node_count = 0;
+    if (!check_cuda(cudaGraphGetNodes((cudaGraph_t)graph, nullptr, &node_count)))
         return false;
+    if (node_count > 0) {
+        std::vector<cudaGraphNode_t> nodes(node_count);
+        if (!check_cuda(cudaGraphGetNodes((cudaGraph_t)graph, nodes.data(), &node_count)))
+            return false;
+        for (cudaGraphNode_t node : nodes) {
+            CUgraphNodeType node_type;
+            if (!check_cu(cuGraphNodeGetType_f(node, &node_type)))
+                return false;
+            if (node_type == CU_GRAPH_NODE_TYPE_MEM_ALLOC || node_type == CU_GRAPH_NODE_TYPE_MEM_FREE) {
+                skip_explicit_upload = true;
+                break;
+            }
+        }
+    }
 #endif
+    if (!skip_explicit_upload) {
+        CUstream cuda_stream = static_cast<CUstream>(stream);
+        if (!check_cuda(cudaGraphUpload(graph_exec, cuda_stream)))
+            return false;
+    }
 
     if (graph_exec_ret)
         *graph_exec_ret = graph_exec;
