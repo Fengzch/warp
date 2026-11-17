@@ -3666,9 +3666,11 @@ bool wp_cuda_graph_create_exec(void* context, void* stream, void* graph, void** 
     // Usually uploading the graph explicitly is optional, but when updating graph nodes (e.g., indirect dispatch)
     // then the upload is required because otherwise the graph nodes that get updated might not yet be uploaded, which
     // results in undefined behavior.
+#if !WP_ENABLE_HIP
     CUstream cuda_stream = static_cast<CUstream>(stream);
     if (!check_cuda(cudaGraphUpload(graph_exec, cuda_stream)))
         return false;
+#endif
 
     if (graph_exec_ret)
         *graph_exec_ret = graph_exec;
