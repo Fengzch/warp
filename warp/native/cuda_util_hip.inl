@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include <queue>
+#include <unordered_set>
 #include <vector>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -79,20 +81,141 @@ bool get_graph_leaf_nodes(cudaGraph_t graph, std::vector<cudaGraphNode_t>& leaf_
     return true;
 }
 
-bool get_dependent_leaf_nodes(cudaGraphNode_t, std::vector<cudaGraphNode_t>& leaf_nodes_ret)
+bool get_dependent_leaf_nodes(cudaGraphNode_t ancestor, std::vector<cudaGraphNode_t>& leaf_nodes_ret)
 {
+    if (!ancestor)
+        return false;
+
+    std::queue<cudaGraphNode_t> frontier { { ancestor } };
+    std::unordered_set<cudaGraphNode_t> visited { ancestor };
+    std::vector<cudaGraphNode_t> dependencies;
     leaf_nodes_ret.clear();
-    return false;
+
+    while (!frontier.empty()) {
+        cudaGraphNode_t node = frontier.front();
+        frontier.pop();
+
+        size_t count = 0;
+        if (!check_cu(cuGraphNodeGetDependentNodes_f(node, nullptr, &count)))
+            return false;
+        if (count == 0) {
+            leaf_nodes_ret.push_back(node);
+            continue;
+        }
+
+        dependencies.resize(count);
+        if (!check_cu(cuGraphNodeGetDependentNodes_f(node, dependencies.data(), &count)))
+            return false;
+        for (cudaGraphNode_t dependency : dependencies) {
+            if (visited.insert(dependency).second)
+                frontier.push(dependency);
+        }
+    }
+    return true;
 }
 
-NodeDependencyResult graph_node_depends_on(cudaGraphNode_t, cudaGraphNode_t)
+NodeDependencyResult graph_node_depends_on(cudaGraphNode_t argument, cudaGraphNode_t referent)
 {
-    return NODE_DEPENDENCY_RESULT_ERROR;
+    if (!argument || !referent)
+        return NODE_DEPENDENCY_RESULT_ERROR;
+
+    std::queue<cudaGraphNode_t> frontier { { referent } };
+    std::unordered_set<cudaGraphNode_t> visited { referent };
+    std::vector<cudaGraphNode_t> dependencies;
+    while (!frontier.empty()) {
+        cudaGraphNode_t node = frontier.front();
+        frontier.pop();
+        if (node == argument)
+            return NODE_DEPENDENCY_RESULT_DEPENDENT;
+
+        size_t count = 0;
+        if (!check_cu(cuGraphNodeGetDependentNodes_f(node, nullptr, &count)))
+            return NODE_DEPENDENCY_RESULT_ERROR;
+        if (count == 0)
+            continue;
+
+        dependencies.resize(count);
+        if (!check_cu(cuGraphNodeGetDependentNodes_f(node, dependencies.data(), &count)))
+            return NODE_DEPENDENCY_RESULT_ERROR;
+        for (cudaGraphNode_t dependency : dependencies) {
+            if (visited.insert(dependency).second)
+                frontier.push(dependency);
+        }
+    }
+    return NODE_DEPENDENCY_RESULT_INDEPENDENT;
 }
 
-GraphAllocQueryResult graph_alloc_query(cudaGraphNode_t, cudaGraphNode_t)
+GraphAllocQueryResult graph_alloc_query(cudaGraphNode_t alloc_node, cudaGraphNode_t query_node)
 {
-    return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+    if (!alloc_node || !query_node)
+        return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+
+    CUgraphNodeType alloc_node_type;
+    if (!check_cu(cuGraphNodeGetType_f(alloc_node, &alloc_node_type))
+        || alloc_node_type != CU_GRAPH_NODE_TYPE_MEM_ALLOC)
+        return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+
+    cudaMemAllocNodeParams alloc_params;
+    if (!check_cuda(cudaGraphMemAllocNodeGetParams(alloc_node, &alloc_params)))
+        return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+
+    std::queue<cudaGraphNode_t> frontier { { alloc_node } };
+    std::unordered_set<cudaGraphNode_t> visited { alloc_node };
+    std::vector<cudaGraphNode_t> dependencies;
+    cudaGraphNode_t free_node = nullptr;
+    bool query_reachable = false;
+
+    while (!frontier.empty()) {
+        cudaGraphNode_t node = frontier.front();
+        frontier.pop();
+        if (node == query_node)
+            query_reachable = true;
+
+        if (!free_node && node != alloc_node) {
+            CUgraphNodeType node_type;
+            if (!check_cu(cuGraphNodeGetType_f(node, &node_type)))
+                return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+            if (node_type == CU_GRAPH_NODE_TYPE_MEM_FREE) {
+                void* free_ptr = nullptr;
+                if (!check_cuda(cudaGraphMemFreeNodeGetParams(node, &free_ptr)))
+                    return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+                if (free_ptr == alloc_params.dptr)
+                    free_node = node;
+            }
+        }
+
+        size_t count = 0;
+        if (!check_cu(cuGraphNodeGetDependentNodes_f(node, nullptr, &count)))
+            return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+        if (count == 0)
+            continue;
+
+        dependencies.resize(count);
+        if (!check_cu(cuGraphNodeGetDependentNodes_f(node, dependencies.data(), &count)))
+            return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+        for (cudaGraphNode_t dependency : dependencies) {
+            if (visited.insert(dependency).second)
+                frontier.push(dependency);
+        }
+    }
+
+    if (!query_reachable)
+        return GRAPH_ALLOC_QUERY_RESULT_INACCESSIBLE;
+    if (!free_node)
+        return GRAPH_ALLOC_QUERY_RESULT_AVAILABLE;
+
+    NodeDependencyResult query_after_free = graph_node_depends_on(query_node, free_node);
+    if (query_after_free == NODE_DEPENDENCY_RESULT_ERROR)
+        return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+    if (query_after_free == NODE_DEPENDENCY_RESULT_DEPENDENT)
+        return GRAPH_ALLOC_QUERY_RESULT_FREED;
+
+    NodeDependencyResult free_after_query = graph_node_depends_on(free_node, query_node);
+    if (free_after_query == NODE_DEPENDENCY_RESULT_ERROR)
+        return GRAPH_ALLOC_QUERY_RESULT_ERROR;
+    if (free_after_query == NODE_DEPENDENCY_RESULT_DEPENDENT)
+        return GRAPH_ALLOC_QUERY_RESULT_AVAILABLE;
+    return GRAPH_ALLOC_QUERY_RESULT_USE_AFTER_FREE;
 }
 
 CUresult cuDriverGetVersion_f(int* version) { return hipDriverGetVersion(version); }

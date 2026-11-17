@@ -217,6 +217,11 @@ uint64_t wp_texture_create_device(
     size_t depth = ndim > 2 ? shape[2] : 0;
 
 #if WP_TEXTURE_HIP
+    if (num_mip_levels > 1) {
+        wp::set_error_string("Warp error: Mipmapped textures are not supported by this HIP runtime");
+        return 0;
+    }
+
     hipDevice_t device;
     hipDeviceProp_t device_properties;
     if (!check_cuda(hipGetDevice(&device)) || !check_cuda(hipGetDeviceProperties(&device_properties, device))) {
@@ -224,11 +229,13 @@ uint64_t wp_texture_create_device(
     }
 
     const size_t dimensions[] = {width, height, depth};
+    const int limits_1d[] = {device_properties.maxTexture1D};
+    const int* limits = ndim == 1 ? limits_1d : (ndim == 2 ? device_properties.maxTexture2D : device_properties.maxTexture3D);
     for (int i = 0; i < ndim; i++) {
-        if (dimensions[i] > static_cast<size_t>(device_properties.maxTexture3D[i])) {
+        if (dimensions[i] > static_cast<size_t>(limits[i])) {
             wp::set_error_string(
                 "Warp error: HIP texture dimension %d (%zu) exceeds device limit (%d)", i, dimensions[i],
-                device_properties.maxTexture3D[i]
+                limits[i]
             );
             return 0;
         }

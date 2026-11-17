@@ -129,6 +129,7 @@
 #define cudaGraphDestroy hipGraphDestroy
 #define cudaGraphExecDestroy hipGraphExecDestroy
 #define cudaGraphAddMemFreeNode hipGraphAddMemFreeNode
+#define cudaGraphMemFreeNodeGetParams hipGraphMemFreeNodeGetParams
 #define cudaGraphAddMemcpyNode1D hipGraphAddMemcpyNode1D
 #define cudaGraphAddEmptyNode hipGraphAddEmptyNode
 #define cudaGraphInstantiateWithFlags hipGraphInstantiateWithFlags

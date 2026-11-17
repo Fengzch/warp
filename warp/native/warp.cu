@@ -4817,6 +4817,7 @@ size_t wp_cuda_compile_program(
         opts.push_back("-DWP_VERIFY_FP");
     if (fast_math)
         opts.push_back("-ffast-math");
+    opts.push_back(fuse_fp ? "-ffp-contract=on" : "-ffp-contract=off");
     if (lineinfo)
         opts.push_back("-gline-tables-only");
 #else

@@ -330,7 +330,11 @@ inline CUDA_CALLABLE bfloat16 approx_div(bfloat16 a, bfloat16 b) { return bfloat
 inline CUDA_CALLABLE unsigned short wp_float_to_bfloat16_bits_sw(float x)
 {
     unsigned int bits;
+#if defined(__HIP_DEVICE_COMPILE__)
     __builtin_memcpy(&bits, &x, sizeof(bits));
+#else
+    memcpy(&bits, &x, sizeof(bits));
+#endif
     // NaN or Inf (exponent all 1s) — truncate, no rounding needed.
     // For NaN, ensure the quiet-NaN bit (bit 6 of bfloat16 mantissa) is set so
     // that NaN values whose top 7 mantissa bits are zero don't become infinities.
@@ -350,7 +354,11 @@ inline CUDA_CALLABLE float wp_bfloat16_bits_to_float_sw(unsigned short u)
 {
     float val;
     unsigned int bits = static_cast<unsigned int>(u) << 16;
+#if defined(__HIP_DEVICE_COMPILE__)
     __builtin_memcpy(&val, &bits, sizeof(val));
+#else
+    memcpy(&val, &bits, sizeof(val));
+#endif
     return val;
 }
 #endif  // WP_NO_BFLOAT16
