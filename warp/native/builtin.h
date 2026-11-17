@@ -9,6 +9,10 @@
 
 #include "crt.h"
 
+#if defined(__HIPCC__)
+extern "C" __device__ int printf(const char* format, ...);
+#endif
+
 #ifdef _WIN32
 #define __restrict__ __restrict
 #endif
