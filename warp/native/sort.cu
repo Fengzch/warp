@@ -16,7 +16,12 @@
 #include <unordered_map>
 #include <utility>
 
+#if WP_ENABLE_HIP
+#include <hipcub/hipcub.hpp>
+namespace cub = hipcub;
+#else
 #include <cub/cub.cuh>
+#endif
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 
@@ -464,10 +469,11 @@ void wp_radix_sort_pairs_uint64_device(
     );
 }
 
-template <bool IsBegin> struct ValidatedSegmentOffset {
+struct ValidatedSegmentOffset {
     const int* segment_start_indices;
     const int* segment_end_indices;
     int count;
+    bool is_begin;
 
     __host__ __device__ __forceinline__ int operator()(int segment_index) const
     {
@@ -475,7 +481,7 @@ template <bool IsBegin> struct ValidatedSegmentOffset {
         const int end = segment_end_indices[segment_index];
         if (start < 0 || end < start || end > count)
             return 0;
-        return IsBegin ? start : end;
+        return is_begin ? start : end;
     }
 };
 
@@ -487,10 +493,10 @@ auto make_validated_segment_offsets(int* segment_start_indices, int* segment_end
 {
     auto segment_indices = thrust::make_counting_iterator(0);
     auto begin_offsets = thrust::make_transform_iterator(
-        segment_indices, ValidatedSegmentOffset<true> { segment_start_indices, segment_end_indices, count }
+        segment_indices, ValidatedSegmentOffset { segment_start_indices, segment_end_indices, count, true }
     );
     auto end_offsets = thrust::make_transform_iterator(
-        segment_indices, ValidatedSegmentOffset<false> { segment_start_indices, segment_end_indices, count }
+        segment_indices, ValidatedSegmentOffset { segment_start_indices, segment_end_indices, count, false }
     );
     return std::make_pair(begin_offsets, end_offsets);
 }

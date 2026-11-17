@@ -391,6 +391,7 @@ WP_API void wp_surface_object_destroy_device(void* context, uint64_t surface_han
 WP_API bool wp_texture_copy_device(
     void* context,
     unsigned width_bytes,
+    unsigned width,
     unsigned height,
     unsigned depth,
     int dst_memory_type,
@@ -674,6 +675,7 @@ WP_API int wp_cuda_driver_version();  // CUDA driver version
 WP_API int wp_cuda_toolkit_version();  // CUDA Toolkit version used to build Warp
 WP_API const char* wp_version();  // Warp native library version string
 WP_API bool wp_cuda_driver_is_initialized();
+WP_API bool wp_is_hip_enabled();
 
 WP_API const char* wp_nanovdb_version();  // NanoVDB version string
 WP_API const char* wp_host_compiler_version();  // Host C++ compiler version

@@ -5,19 +5,24 @@
 
 #include "builtin.h"
 
-#if WP_ENABLE_CUDA
+#if WP_ENABLE_CUDA || WP_ENABLE_HIP
 
 #include <vector>
 
+#include <stdio.h>
+
+#if WP_ENABLE_HIP
+#include "hip_util.h"
+#else
 #include <cudaTypedefs.h>
 #include <cuda_runtime_api.h>
-#include <stdio.h>
+#endif
 
 #define check_cuda(code) (check_cuda_result(code, __FUNCTION__, __FILE__, __LINE__))
 #define check_cu(code) (check_cu_result(code, __FUNCTION__, __FILE__, __LINE__))
 
 
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
 #if _DEBUG
 // helper for launching kernels (synchronize + error checking after each kernel)
 #define wp_launch_device(context, kernel, dim, args) { \
@@ -58,7 +63,7 @@ CUresult cuDevicePrimaryCtxRetain_f(CUcontext* ctx, CUdevice dev);
 CUresult cuDevicePrimaryCtxRelease_f(CUdevice dev);
 CUresult cuDeviceCanAccessPeer_f(int* can_access, CUdevice dev, CUdevice peer_dev);
 CUresult cuMemGetInfo_f(size_t* free, size_t* total);
-#if CUDA_VERSION >= 12080
+#if !WP_ENABLE_HIP && CUDA_VERSION >= 12080
 // batched memcpy
 CUresult cuMemcpyBatchAsync_f(
     CUdeviceptr* dsts,
@@ -109,7 +114,7 @@ CUresult cuEventQuery_f(CUevent event);
 CUresult cuEventRecord_f(CUevent event, CUstream stream);
 CUresult cuEventRecordWithFlags_f(CUevent event, CUstream stream, unsigned int flags);
 CUresult cuEventSynchronize_f(CUevent event);
-#if CUDA_VERSION >= 12030
+#if !WP_ENABLE_HIP && CUDA_VERSION >= 12030
 // function used to add conditional graph nodes, not available in older CUDA versions
 CUresult cuGraphAddNode_f(
     CUgraphNode* phGraphNode,
@@ -123,9 +128,11 @@ CUresult cuGraphAddNode_f(
 CUresult cuGraphNodeGetDependentNodes_f(CUgraphNode hNode, CUgraphNode* dependentNodes, size_t* numDependentNodes);
 CUresult cuGraphNodeGetType_f(CUgraphNode hNode, CUgraphNodeType* type);
 CUresult cuModuleUnload_f(CUmodule hmod);
+#if !WP_ENABLE_HIP
 CUresult cuModuleLoadDataEx_f(
     CUmodule* module, const void* image, unsigned int numOptions, CUjit_option* options, void** optionValues
 );
+#endif
 CUresult cuModuleGetFunction_f(CUfunction* hfunc, CUmodule hmod, const char* name);
 CUresult cuLaunchKernel_f(
     CUfunction f,
@@ -164,7 +171,9 @@ CUresult cuGraphicsSubResourceGetMappedArray_f(
 );
 CUresult cuGraphicsUnregisterResource_f(CUgraphicsResource resource);
 CUresult cuModuleGetGlobal_f(CUdeviceptr* dptr, size_t* bytes, CUmodule hmod, const char* name);
+#if !WP_ENABLE_HIP
 CUresult cuOccupancyMaxActiveClusters_f(int* numClusters, CUfunction func, const CUlaunchConfig* config);
+#endif
 CUresult cuFuncSetAttribute_f(CUfunction hfunc, CUfunction_attribute attrib, int value);
 CUresult cuFuncGetAttribute_f(int* pi, CUfunction_attribute attrib, CUfunction hfunc);
 CUresult cuIpcGetEventHandle_f(CUipcEventHandle* pHandle, CUevent event);
@@ -448,7 +457,7 @@ public:
     }
 };
 
-#endif  // WP_ENABLE_CUDA
+#endif  // WP_ENABLE_CUDA || WP_ENABLE_HIP
 
 // Pass this value to device functions as the `context` parameter to bypass unnecessary context management.
 // This works in conjunction with ContextGuards, which do nothing if the given context is NULL.

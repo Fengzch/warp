@@ -7,6 +7,10 @@
 
 #define CUBQL_GPU_BUILDER_IMPLEMENTATION 1
 
+#if WP_ENABLE_HIP
+#define WP_DISABLE_CUBQL 1
+#endif
+
 #include "warp.h"
 
 #include "bvh.h"
@@ -18,16 +22,17 @@
 #include <cstring>
 #include <vector>
 
-#include <cuda.h>
-#include <cuda_runtime_api.h>
-
 #define THRUST_IGNORE_CUB_VERSION_CHECK
 
 // CUB must be included before cuBQL. cuBQL's math/common.h includes <stdexcept>,
 // which causes CCCL's _CCCL_HAS_EXCEPTIONS() to be true when typeid.h is later
 // pulled in by CUB. This makes __throw_out_of_range non-constexpr, breaking a
 // static_assert in typeid.h on GCC < 12 (which lacks P2448R2 relaxed constexpr).
+#if !WP_ENABLE_HIP
+#include <cuda.h>
+#include <cuda_runtime_api.h>
 #include <cub/cub.cuh>
+#endif
 
 #ifndef WP_DISABLE_CUBQL
 #include "cuBQL/bvh.h"

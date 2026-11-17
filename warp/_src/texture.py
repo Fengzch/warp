@@ -793,6 +793,7 @@ class Texture:
             result = self._runtime.core.wp_texture_copy_device(
                 self.device.context,
                 width_bytes,
+                self.width,
                 height,
                 depth,
                 MemoryType.ARRAY,
@@ -900,6 +901,7 @@ class Texture:
             result = self._runtime.core.wp_texture_copy_device(
                 self.device.context,
                 width_bytes,
+                self.width,
                 height,
                 depth,
                 dst_memory_type,
@@ -1049,6 +1051,7 @@ class Texture:
                 result = self._runtime.core.wp_texture_copy_device(
                     self.device.context,
                     width_bytes,
+                    level_w,
                     level_h,
                     level_d,
                     MemoryType.ARRAY,

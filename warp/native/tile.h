@@ -11,17 +11,33 @@
 // this tree pre-defines them, so the definitions below are what every build here
 // gets.
 #ifndef WP_TILE_WARP_SIZE
+#if defined(__HIPCC__) && defined(__AMDGCN_WAVEFRONT_SIZE) && __AMDGCN_WAVEFRONT_SIZE == 64
+#define WP_TILE_WARP_SIZE 64
+#else
 #define WP_TILE_WARP_SIZE 32
+#endif
 #endif
 
 #ifndef WP_TILE_LANE_MASK_ALL
+#if WP_TILE_WARP_SIZE == 64
+#define WP_TILE_LANE_MASK_ALL 0xffffffffffffffffull
+#else
 #define WP_TILE_LANE_MASK_ALL 0xffffffffu
 #endif
+#endif
 #ifndef WP_TILE_LANE_MASK_POPC
+#if defined(__HIPCC__)
+#define WP_TILE_LANE_MASK_POPC(mask) __popcll(mask)
+#else
 #define WP_TILE_LANE_MASK_POPC(mask) __popc(mask)
 #endif
+#endif
 #ifndef WP_TILE_LANE_MASK_FFS
+#if defined(__HIPCC__)
+#define WP_TILE_LANE_MASK_FFS(mask) __ffsll(mask)
+#else
 #define WP_TILE_LANE_MASK_FFS(mask) __ffs(mask)
+#endif
 #endif
 
 using wp_tile_lane_mask_bits_t = decltype(WP_TILE_LANE_MASK_ALL);
@@ -45,14 +61,17 @@ using wp_tile_lane_mask_bits_t = decltype(WP_TILE_LANE_MASK_ALL);
 #endif  // __clang__
 
 // Check if the CUDA toolkit is available
-#if WP_ENABLE_CUDA || defined(__CUDACC_RTC__) || (defined(__clang__) && defined(__CUDA__))
+#if WP_ENABLE_CUDA || WP_ENABLE_HIP || defined(__CUDACC_RTC__) || (defined(__clang__) && defined(__CUDA__)) || defined(__HIPCC__)
 
 // NVRTC has built-in float4; Clang CUDA JIT defines it in cuda_crt.h
 #if defined(__CUDACC_RTC__) || (defined(__clang__) && defined(__CUDA__))
 // float4 already available
-#else
+#elif !WP_ENABLE_HIP
 // NVCC: Include vector_types.h to get float4
 #include <cuda_runtime.h>
+#else
+// HIP host compilation does not predeclare CUDA-compatible vector types.
+#include <hip/hip_runtime.h>
 #endif
 
 #else

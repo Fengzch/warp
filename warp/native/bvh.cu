@@ -11,13 +11,17 @@
 #include <algorithm>
 #include <vector>
 
-#include <cuda.h>
-#include <cuda_runtime_api.h>
-
 #define THRUST_IGNORE_CUB_VERSION_CHECK
 #define REORDER_HOST_TREE
 
+#if WP_ENABLE_HIP
+#include <hipcub/hipcub.hpp>
+namespace cub = hipcub;
+#else
+#include <cuda.h>
+#include <cuda_runtime_api.h>
 #include <cub/cub.cuh>
+#endif
 
 extern CUcontext get_current_context();
 

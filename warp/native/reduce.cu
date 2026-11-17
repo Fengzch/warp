@@ -9,7 +9,12 @@
 #include "temp_buffer.h"
 
 #define THRUST_IGNORE_CUB_VERSION_CHECK
+#if WP_ENABLE_HIP
+#include <hipcub/hipcub.hpp>
+namespace cub = hipcub;
+#else
 #include <cub/device/device_reduce.cuh>
+#endif
 
 namespace {
 

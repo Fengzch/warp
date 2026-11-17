@@ -55,7 +55,7 @@ print(positions.numpy())
 
 ## Installing
 
-Experimental Linux HIP build work for AMD ROCm and Hygon DTK is in progress. The native runtime and JIT port are not yet usable; see the HIP build status in [the source installation guide](docs/user_guide/installation.rst#experimental-hip-build). Existing published wheels remain CUDA/CPU builds.
+Experimental Linux HIP build work for AMD ROCm and Hygon DTK is in progress. The native runtime and JIT can run focused workloads on Hygon DTK, but broad feature and platform validation is incomplete; see the [source installation guide](docs/user_guide/installation.rst#experimental-hip-build). Existing published wheels remain CUDA/CPU builds.
 
 Warp requires Python 3.10 or newer. We publish `warp-lang` wheels on PyPI for Windows (x86-64), Linux (x86-64 and AArch64), and macOS (Apple Silicon). The Windows x86-64 and Linux wheels support CPU execution and CUDA acceleration. The macOS wheels support CPU execution but not Metal acceleration.
 

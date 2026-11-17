@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <fstream>
 
+#if !WP_ENABLE_HIP
 #include <nvPTXCompiler.h>
 #include <nvrtc.h>
 #if WP_ENABLE_MATHDX
@@ -22,6 +23,7 @@
 #include <libcusolverdx.h>
 #include <libmathdx.h>
 #include <nvJitLink.h>
+#endif
 #endif
 
 #include <algorithm>
@@ -37,7 +39,11 @@
 
 #define check_any(result) (check_generic(result, __FILE__, __LINE__))
 #define check_nvrtc(code) (check_nvrtc_result(code, __FILE__, __LINE__))
+#if WP_ENABLE_HIP
+#define check_nvptx(code) (false)
+#else
 #define check_nvptx(code) (check_nvptx_result(code, __FILE__, __LINE__))
+#endif
 #define check_nvjitlink(handle, code) (check_nvjitlink_result(handle, code, __FILE__, __LINE__))
 #define check_cufftdx(code) (check_cufftdx_result(code, __FILE__, __LINE__))
 #define check_cublasdx(code) (check_cublasdx_result(code, __FILE__, __LINE__))
@@ -89,6 +95,7 @@ bool check_nvrtc_result(nvrtcResult result, const char* file, int line)
     return false;
 }
 
+#if !WP_ENABLE_HIP
 bool check_nvptx_result(nvPTXCompileResult result, const char* file, int line)
 {
     if (result == NVPTXCOMPILE_SUCCESS)
@@ -125,6 +132,7 @@ bool check_nvptx_result(nvPTXCompileResult result, const char* file, int line)
     fprintf(stderr, "Warp PTX compilation error %u: %s (%s:%d)\n", unsigned(result), error_string, file, line);
     return false;
 }
+#endif
 
 bool check_generic(int result, const char* file, int line)
 {
@@ -253,9 +261,13 @@ int cuda_init()
                 g_devices[i].ordinal = i;
                 check_cu(cuDeviceGetName_f(g_devices[i].name, DeviceInfo::kNameLen, device));
                 check_cu(cuDeviceGetUuid_f(&g_devices[i].uuid, device));
+#if WP_ENABLE_HIP
+                g_devices[i].pci_domain_id = 0;
+#else
                 check_cu(
                     cuDeviceGetAttribute_f(&g_devices[i].pci_domain_id, CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID, device)
                 );
+#endif
                 check_cu(cuDeviceGetAttribute_f(&g_devices[i].pci_bus_id, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, device));
                 check_cu(
                     cuDeviceGetAttribute_f(&g_devices[i].pci_device_id, CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID, device)
@@ -268,9 +280,13 @@ int cuda_init()
                     &g_devices[i].direct_managed_mem_access_from_host,
                     CU_DEVICE_ATTRIBUTE_DIRECT_MANAGED_MEM_ACCESS_FROM_HOST, device
                 ));
+#if WP_ENABLE_HIP
+                g_devices[i].host_native_atomic_supported = 0;
+#else
                 check_cu(cuDeviceGetAttribute_f(
                     &g_devices[i].host_native_atomic_supported, CU_DEVICE_ATTRIBUTE_HOST_NATIVE_ATOMIC_SUPPORTED, device
                 ));
+#endif
                 check_cu(
                     cuDeviceGetAttribute_f(&g_devices[i].managed_memory, CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY, device)
                 );
@@ -285,6 +301,9 @@ int cuda_init()
                 );
 #ifdef CUDA_VERSION
 #if CUDA_VERSION >= 12000
+#if WP_ENABLE_HIP
+                g_devices[i].is_ipc_supported = 0;
+#else
                 int device_attribute_integrated = 0;
                 check_cu(cuDeviceGetAttribute_f(&device_attribute_integrated, CU_DEVICE_ATTRIBUTE_INTEGRATED, device));
                 if (device_attribute_integrated == 0) {
@@ -295,6 +314,7 @@ int cuda_init()
                     // integrated devices do not support CUDA IPC
                     g_devices[i].is_ipc_supported = 0;
                 }
+#endif
 #endif
 #endif
                 check_cu(cuDeviceGetAttribute_f(
@@ -2442,6 +2462,7 @@ const char* wp_libmathdx_version()
 }
 
 bool wp_cuda_driver_is_initialized() { return is_cuda_driver_initialized(); }
+bool wp_is_hip_enabled() { return WP_ENABLE_HIP != 0; }
 
 int wp_nvrtc_supported_arch_count()
 {
@@ -4741,9 +4762,11 @@ size_t wp_cuda_compile_program(
         printf("NVRTC version %d.%d\n", major, minor);
     }
 
+#if !WP_ENABLE_HIP
     char include_opt[max_path];
     strcpy(include_opt, "--include-path=");
     strcat(include_opt, include_dir);
+#endif
 
     const int max_arch = 128;
     char arch_opt[max_arch];
@@ -4752,6 +4775,10 @@ size_t wp_cuda_compile_program(
     // arch_suffix is "" (no suffix), "a" (arch-specific), or "f" (family-specific)
     const char* suffix = (arch_suffix != nullptr) ? arch_suffix : "";
 
+#if WP_ENABLE_HIP
+    snprintf(arch_opt, max_arch, "--gpu-architecture=%s", WP_HIP_ARCH);
+    snprintf(arch_opt_lto, max_arch, "--offload-arch=%s", WP_HIP_ARCH);
+#else
     if (use_ptx) {
         snprintf(arch_opt, max_arch, "--gpu-architecture=compute_%d%s", arch, suffix);
         snprintf(arch_opt_lto, max_arch, "-arch=compute_%d%s", arch, suffix);
@@ -4759,14 +4786,43 @@ size_t wp_cuda_compile_program(
         snprintf(arch_opt, max_arch, "--gpu-architecture=sm_%d%s", arch, suffix);
         snprintf(arch_opt_lto, max_arch, "-arch=sm_%d%s", arch, suffix);
     }
+#endif
 
+    std::vector<std::string> stored_options;
+    stored_options.reserve(static_cast<size_t>(num_cuda_include_dirs) + 8);
     std::vector<const char*> opts;
+#if WP_ENABLE_HIP
+    std::string native_include = std::string("-I") + include_dir;
+    std::string sdk_include = std::string("-I") + WP_HIP_INCLUDE_DIR;
+    std::string hip_arch = std::string("--gpu-architecture=") + WP_HIP_ARCH;
+    opts.push_back(hip_arch.c_str());
+    opts.push_back(native_include.c_str());
+    opts.push_back(sdk_include.c_str());
+    opts.push_back("--std=c++17");
+    opts.push_back("-DWP_ENABLE_HIP=1");
+    opts.push_back("-DWP_ENABLE_CUDA=1");
+    opts.push_back("-D__HIP_PLATFORM_AMD__");
+    opts.push_back("-DWP_ENABLE_MATHDX=0");
+    if (debug) {
+        opts.push_back("-D_DEBUG");
+        opts.push_back("-O0");
+    } else {
+        opts.push_back("-DNDEBUG");
+        char opt[8];
+        snprintf(opt, sizeof(opt), "-O%d", optimization_level);
+        stored_options.push_back(opt);
+        opts.push_back(stored_options.back().c_str());
+    }
+    if (verify_fp)
+        opts.push_back("-DWP_VERIFY_FP");
+    if (fast_math)
+        opts.push_back("-ffast-math");
+    if (lineinfo)
+        opts.push_back("-gline-tables-only");
+#else
     opts.push_back(arch_opt);
     opts.push_back(include_opt);
-
-    // Vector to store dynamically created option strings
-    std::vector<std::string> stored_options;
-    stored_options.reserve(static_cast<size_t>(num_cuda_include_dirs) + 2);
+#endif
 
     if (precompiled_headers) {
         // CUDA 12.8+ supports precompiled headers
@@ -4786,12 +4842,18 @@ size_t wp_cuda_compile_program(
 #endif
     }
 
+#if !WP_ENABLE_HIP
     append_common_nvrtc_compile_options(
         opts, use_ptx, arch, debug, optimization_level, verify_fp, fast_math, fuse_fp, lineinfo
     );
+#endif
 
     for (int i = 0; i < num_cuda_include_dirs; i++) {
+#if WP_ENABLE_HIP
+        stored_options.push_back(std::string("-I") + cuda_include_dirs[i]);
+#else
         stored_options.push_back(std::string("--include-path=") + cuda_include_dirs[i]);
+#endif
         opts.push_back(stored_options.back().c_str());
     }
 
@@ -5300,6 +5362,7 @@ bool wp_cuda_compile_solver(
 
 #endif
 
+#if !WP_ENABLE_HIP
 static const char* apic_nvptx_error_string(nvPTXCompileResult result)
 {
     switch (result) {
@@ -5323,6 +5386,7 @@ static const char* apic_nvptx_error_string(nvPTXCompileResult result)
         return "unknown error";
     }
 }
+#endif
 
 static std::string apic_cuda_error_string(CUresult result)
 {
@@ -5351,6 +5415,19 @@ static bool apic_cuda_load_module_data(
 
     ContextGuard guard(context);
     *module = nullptr;
+
+#if WP_ENABLE_HIP
+    if (load_ptx) {
+        diagnostic = "PTX modules are not supported by the HIP backend";
+        return false;
+    }
+    hipError_t result = hipModuleLoadData(reinterpret_cast<hipModule_t*>(module), data);
+    if (result != hipSuccess) {
+        diagnostic = hipGetErrorString(result);
+        return false;
+    }
+    return true;
+#else
 
     std::vector<uint8_t> terminated_input;
     const void* input = data;
@@ -5441,6 +5518,7 @@ static bool apic_cuda_load_module_data(
         return false;
     }
     return true;
+#endif
 }
 
 // Compile generated Warp CUDA source to memory with the semantic options
@@ -5531,6 +5609,21 @@ static bool cuda_module_path_is_ptx(const char* path)
 // to stay valid for the call.
 static void* cuda_load_module_image(void* context, const char* image, size_t size, bool is_ptx)
 {
+#if WP_ENABLE_HIP
+    (void)size;
+    if (is_ptx) {
+        fprintf(stderr, "Warp HIP error: PTX modules are not supported by the HIP backend\n");
+        return NULL;
+    }
+    ContextGuard guard(context);
+    CUmodule module = NULL;
+    hipError_t result = hipModuleLoadData(reinterpret_cast<hipModule_t*>(&module), image);
+    if (result != hipSuccess) {
+        fprintf(stderr, "Warp HIP error: Loading code object failed: %s\n", hipGetErrorString(result));
+        return NULL;
+    }
+    return module;
+#else
     ContextGuard guard(context);
 
     int driver_cuda_version = 0;
@@ -5608,6 +5701,7 @@ static void* cuda_load_module_image(void* context, const char* image, size_t siz
     }
 
     return module;
+#endif
 }
 
 void* wp_cuda_load_module(void* context, const char* path)
@@ -5656,6 +5750,8 @@ int wp_cuda_get_max_shared_memory(void* context)
 bool wp_cuda_configure_kernel_shared_memory(void* kernel, int size)
 {
     int requested_smem_bytes = size;
+    if (requested_smem_bytes == 0)
+        return true;
 
     // configure shared memory
     CUresult res = cuFuncSetAttribute_f(
@@ -5707,6 +5803,13 @@ bool wp_cuda_get_kernel_properties(void* context, void* kernel, int* properties,
 
 bool wp_cuda_set_kernel_cluster_attrs(void* kernel, int cx, int cy, int cz)
 {
+#if WP_ENABLE_HIP
+    (void)kernel;
+    (void)cx;
+    (void)cy;
+    (void)cz;
+    return false;
+#else
     if (!kernel)
         return false;
 
@@ -5725,10 +5828,18 @@ bool wp_cuda_set_kernel_cluster_attrs(void* kernel, int cx, int cy, int cz)
     }
 
     return true;
+#endif
 }
 
 int wp_cuda_get_max_cluster_dim(void* context, void* kernel, int block_dim, int dynamic_smem_bytes)
 {
+#if WP_ENABLE_HIP
+    (void)context;
+    (void)kernel;
+    (void)block_dim;
+    (void)dynamic_smem_bytes;
+    return 1;
+#else
     if (!kernel || !context)
         return 1;
 
@@ -5787,6 +5898,7 @@ int wp_cuda_get_max_cluster_dim(void* context, void* kernel, int block_dim, int 
     cuFuncSetAttribute_f((CUfunction)kernel, non_portable_attr, prior_non_portable);
 
     return max_cluster_dim;
+#endif
 }
 
 void* wp_cuda_get_kernel(void* context, void* module, const char* name)
@@ -6011,7 +6123,7 @@ void wp_cuda_graphics_device_ptr_and_size(void* context, void* resource, uint64_
     size_t bytes;
     check_cu(cuGraphicsResourceGetMappedPointer_f(&device_ptr, &bytes, *(CUgraphicsResource*)resource));
 
-    *ptr = device_ptr;
+    *ptr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(device_ptr));
     *size = bytes;
 }
 

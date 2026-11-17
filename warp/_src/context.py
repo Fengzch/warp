@@ -4671,6 +4671,8 @@ class Module:
         return snapshot
 
     def _use_ptx(self, device) -> bool:
+        if runtime.core.wp_is_hip_enabled():
+            return False
         return device.get_cuda_output_format(self.options.get("cuda_output")) == "ptx"
 
     def get_module_identifier(self, block_dim: int | None = None) -> str:
@@ -8023,6 +8025,7 @@ class Runtime:
             self.core.wp_texture_copy_device.argtypes = [
                 ctypes.c_void_p,  # context
                 ctypes.c_uint,  # width_bytes
+                ctypes.c_uint,  # width
                 ctypes.c_uint,  # height
                 ctypes.c_uint,  # depth
                 ctypes.c_int,  # dst_memory_type
@@ -8116,6 +8119,8 @@ class Runtime:
             self.core.wp_cuda_toolkit_version.restype = ctypes.c_int
             self.core.wp_cuda_driver_is_initialized.argtypes = None
             self.core.wp_cuda_driver_is_initialized.restype = ctypes.c_bool
+            self.core.wp_is_hip_enabled.argtypes = None
+            self.core.wp_is_hip_enabled.restype = ctypes.c_bool
 
             self.core.wp_nvrtc_supported_arch_count.argtypes = None
             self.core.wp_nvrtc_supported_arch_count.restype = ctypes.c_int

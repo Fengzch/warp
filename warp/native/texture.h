@@ -339,7 +339,7 @@ struct cuda_array_desc_t {
 // CPU Software Texture Sampling Helpers
 // ============================================================================
 
-#if !defined(__CUDA_ARCH__)
+#if !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__)
 
 // Reduce periodic coordinates before division or scaling can discard the
 // fractional position (or overflow). Unnormalized CPU textures also support
@@ -731,7 +731,7 @@ inline float cpu_sample_3d_channel(const Texture* tex, float u, float v, float w
     return v0 * (1.0f - fl) + v1 * fl;
 }
 
-#endif  // !defined(__CUDA_ARCH__)
+#endif  // host-only software texture sampling helpers
 
 // ============================================================================
 // Texture Sampling Functions
@@ -773,7 +773,7 @@ template <typename T> __device__ T tex3DLod(unsigned long long texObj, float x, 
 
 // CUDA < 13.1 can miscompile vector texture fetches in functions that mix
 // return widths on sm_89 and older; texture_cuda_fetch adds a call boundary.
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
 #if defined(__CUDACC_VER_MAJOR__) && defined(__CUDACC_VER_MINOR__)
 constexpr bool use_cuda_texture_mixed_width_workaround = (__CUDA_ARCH__ < 900)
     && ((__CUDACC_VER_MAJOR__ < 13) || ((__CUDACC_VER_MAJOR__ == 13) && (__CUDACC_VER_MINOR__ < 1)));
@@ -832,43 +832,52 @@ template <> struct texture_cuda_sample_types<vec4f> {
 };
 
 template <typename NativeType> struct texture_cuda_fetch {
+#if defined(__HIPCC__)
+    static CUDA_CALLABLE_DEVICE hipTextureObject_t get_handle(uint64 tex)
+    {
+        return reinterpret_cast<hipTextureObject_t>(tex);
+    }
+#else
+    static CUDA_CALLABLE_DEVICE uint64 get_handle(uint64 tex) { return tex; }
+#endif
+
     static CUDA_CALLABLE_DEVICE __noinline__ NativeType sample_base(const texture1d_t& tex, float u)
     {
-        return tex1D<NativeType>(tex.tex, u);
+        return tex1D<NativeType>(get_handle(tex.tex), u);
     }
 
     static CUDA_CALLABLE_DEVICE __noinline__ NativeType sample_base(const texture2d_t& tex, float u, float v)
     {
-        return tex2D<NativeType>(tex.tex, u, v);
+        return tex2D<NativeType>(get_handle(tex.tex), u, v);
     }
 
     static CUDA_CALLABLE_DEVICE __noinline__ NativeType sample_base(const texture3d_t& tex, float u, float v, float w)
     {
-        return tex3D<NativeType>(tex.tex, u, v, w);
+        return tex3D<NativeType>(get_handle(tex.tex), u, v, w);
     }
 
     static CUDA_CALLABLE_DEVICE NativeType sample(const texture1d_t& tex, float lod, float u)
     {
         if constexpr (use_cuda_texture_mixed_width_workaround && sizeof(NativeType) > sizeof(float))
-            return (lod < 0.0f) ? sample_base(tex, u) : tex1DLod<NativeType>(tex.tex, u, lod);
+            return (lod < 0.0f) ? sample_base(tex, u) : tex1DLod<NativeType>(get_handle(tex.tex), u, lod);
         else
-            return (lod < 0.0f) ? tex1D<NativeType>(tex.tex, u) : tex1DLod<NativeType>(tex.tex, u, lod);
+            return (lod < 0.0f) ? tex1D<NativeType>(get_handle(tex.tex), u) : tex1DLod<NativeType>(get_handle(tex.tex), u, lod);
     }
 
     static CUDA_CALLABLE_DEVICE NativeType sample(const texture2d_t& tex, float lod, float u, float v)
     {
         if constexpr (use_cuda_texture_mixed_width_workaround && sizeof(NativeType) > sizeof(float))
-            return (lod < 0.0f) ? sample_base(tex, u, v) : tex2DLod<NativeType>(tex.tex, u, v, lod);
+            return (lod < 0.0f) ? sample_base(tex, u, v) : tex2DLod<NativeType>(get_handle(tex.tex), u, v, lod);
         else
-            return (lod < 0.0f) ? tex2D<NativeType>(tex.tex, u, v) : tex2DLod<NativeType>(tex.tex, u, v, lod);
+            return (lod < 0.0f) ? tex2D<NativeType>(get_handle(tex.tex), u, v) : tex2DLod<NativeType>(get_handle(tex.tex), u, v, lod);
     }
 
     static CUDA_CALLABLE_DEVICE NativeType sample(const texture3d_t& tex, float lod, float u, float v, float w)
     {
         if constexpr (use_cuda_texture_mixed_width_workaround && sizeof(NativeType) > sizeof(float))
-            return (lod < 0.0f) ? sample_base(tex, u, v, w) : tex3DLod<NativeType>(tex.tex, u, v, w, lod);
+            return (lod < 0.0f) ? sample_base(tex, u, v, w) : tex3DLod<NativeType>(get_handle(tex.tex), u, v, w, lod);
         else
-            return (lod < 0.0f) ? tex3D<NativeType>(tex.tex, u, v, w) : tex3DLod<NativeType>(tex.tex, u, v, w, lod);
+            return (lod < 0.0f) ? tex3D<NativeType>(get_handle(tex.tex), u, v, w) : tex3DLod<NativeType>(get_handle(tex.tex), u, v, w, lod);
     }
 };
 
@@ -896,7 +905,7 @@ template <typename T> struct texture_sample_helper;
 template <> struct texture_sample_helper<float> {
     static CUDA_CALLABLE float sample_1d(const texture1d_t& tex, float u, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<float>(tex, lod, u);
 #else
         if (tex.tex == 0)
@@ -910,7 +919,7 @@ template <> struct texture_sample_helper<float> {
 
     static CUDA_CALLABLE float sample_2d(const texture2d_t& tex, float u, float v, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<float>(tex, lod, u, v);
 #else
         if (tex.tex == 0)
@@ -924,7 +933,7 @@ template <> struct texture_sample_helper<float> {
 
     static CUDA_CALLABLE float sample_3d(const texture3d_t& tex, float u, float v, float w, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<float>(tex, lod, u, v, w);
 #else
         if (tex.tex == 0)
@@ -942,7 +951,7 @@ template <> struct texture_sample_helper<float> {
 template <> struct texture_sample_helper<vec2f> {
     static CUDA_CALLABLE vec2f sample_1d(const texture1d_t& tex, float u, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<vec2f>(tex, lod, u);
 #else
         if (tex.tex == 0)
@@ -958,7 +967,7 @@ template <> struct texture_sample_helper<vec2f> {
 
     static CUDA_CALLABLE vec2f sample_2d(const texture2d_t& tex, float u, float v, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<vec2f>(tex, lod, u, v);
 #else
         if (tex.tex == 0)
@@ -974,7 +983,7 @@ template <> struct texture_sample_helper<vec2f> {
 
     static CUDA_CALLABLE vec2f sample_3d(const texture3d_t& tex, float u, float v, float w, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<vec2f>(tex, lod, u, v, w);
 #else
         if (tex.tex == 0)
@@ -995,7 +1004,7 @@ template <> struct texture_sample_helper<vec2f> {
 template <> struct texture_sample_helper<vec4f> {
     static CUDA_CALLABLE vec4f sample_1d(const texture1d_t& tex, float u, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<vec4f>(tex, lod, u);
 #else
         if (tex.tex == 0)
@@ -1015,7 +1024,7 @@ template <> struct texture_sample_helper<vec4f> {
 
     static CUDA_CALLABLE vec4f sample_2d(const texture2d_t& tex, float u, float v, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<vec4f>(tex, lod, u, v);
 #else
         if (tex.tex == 0)
@@ -1036,7 +1045,7 @@ template <> struct texture_sample_helper<vec4f> {
 
     static CUDA_CALLABLE vec4f sample_3d(const texture3d_t& tex, float u, float v, float w, float lod)
     {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return texture_cuda_sample<vec4f>(tex, lod, u, v, w);
 #else
         if (tex.tex == 0)
@@ -1177,7 +1186,7 @@ CUDA_CALLABLE inline float texture_coord_scale(int use_normalized_coords, int le
     return use_normalized_coords ? (float)level_dim : ((float)level_dim / (float)base_dim);
 }
 
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
 // Reduce periodic coordinates before scaling to texels so large offsets do not
 // round away the half-texel shift or the reconstructed corner coordinates.
 CUDA_CALLABLE inline float texture_grad_periodic_coord(float coord, int use_normalized_coords, int address_mode)
@@ -1194,7 +1203,7 @@ CUDA_CALLABLE inline float texture_grad_periodic_coord(float coord, int use_norm
 
 // CPU dimensions can approach INT_MAX; a reflected cell and its upper neighbor
 // need wider indices even though every addressed texel lies inside the texture.
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
 using texture_grad_index = int;
 #else
 using texture_grad_index = int64;
@@ -1205,7 +1214,7 @@ using texture_grad_index = int64;
 CUDA_CALLABLE inline texture_grad_index
 texture_grad_cell(float coord, int normalized, int base_dim, int level_dim, int address_mode, float& fraction)
 {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     // CUDA treats unnormalized WRAP/MIRROR as CLAMP. Normalized periodic
     // coordinates were already reduced by adj_texture_sample().
     if (!normalized && (address_mode == WP_TEXTURE_ADDRESS_WRAP || address_mode == WP_TEXTURE_ADDRESS_MIRROR))
@@ -1223,14 +1232,14 @@ texture_grad_cell(float coord, int normalized, int base_dim, int level_dim, int 
         t = max(-2.0f, min(t, float(level_dim)));
     const float cell = floor(t);
     fraction = t - cell;
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     // Match the CUDA sampler's eight fractional bits on the other axes.
     fraction = rintf(fraction * 256.0f) / 256.0f;
 #endif
     return (texture_grad_index)cell;
 }
 
-#if !defined(__CUDA_ARCH__)
+#if !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__)
 // Read CPU corners directly so coordinate round trips cannot interpolate them.
 template <typename T> inline T cpu_texture_grad_texel(const Texture* tex, int level, int64 x, int64 y = 0, int64 z = 0)
 {
@@ -1247,29 +1256,39 @@ template <typename T> inline T cpu_texture_grad_texel(const Texture* tex, int le
     }
 }
 
-#endif  // !defined(__CUDA_ARCH__)
+#endif  // host-only software texture gradient helpers
 
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
 // Integer coordinates bypass texture filtering. CUDA arrays, including 1D
 // arrays, use the 2D array-fetch instruction; the 1D integer instruction is for
 // linear-memory textures. Always fetch four channels to avoid mixed-width
 // texture instruction compiler bugs, then select the requested components.
 CUDA_CALLABLE_DEVICE inline vec4f cuda_texture_grad_fetch(uint64 tex, int level, int x, int y)
 {
+#if defined(__HIP_DEVICE_COMPILE__)
+    const float4 fetched = tex2DLod<float4>(reinterpret_cast<hipTextureObject_t>(tex), float(x) + 0.5f, float(y) + 0.5f, float(level));
+    return vec4f(fetched.x, fetched.y, fetched.z, fetched.w);
+#else
     vec4f value;
     asm("tex.level.2d.v4.f32.s32 {%0, %1, %2, %3}, [%4, {%5, %6}], %7;"
         : "=f"(value[0]), "=f"(value[1]), "=f"(value[2]), "=f"(value[3])
         : "l"(tex), "r"(x), "r"(y), "r"(level));
     return value;
+#endif
 }
 
 CUDA_CALLABLE_DEVICE inline vec4f cuda_texture_grad_fetch(uint64 tex, int level, int x, int y, int z)
 {
+#if defined(__HIP_DEVICE_COMPILE__)
+    const float4 fetched = tex3DLod<float4>(reinterpret_cast<hipTextureObject_t>(tex), float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f, float(level));
+    return vec4f(fetched.x, fetched.y, fetched.z, fetched.w);
+#else
     vec4f value;
     asm("tex.level.3d.v4.f32.s32 {%0, %1, %2, %3}, [%4, {%5, %6, %7, 0}], %8;"
         : "=f"(value[0]), "=f"(value[1]), "=f"(value[2]), "=f"(value[3])
         : "l"(tex), "r"(x), "r"(y), "r"(z), "r"(level));
     return value;
+#endif
 }
 
 #if defined(WP_WORKAROUND_CUDA_TEXTURE_CUBIN)
@@ -1339,11 +1358,20 @@ template <typename T> CUDA_CALLABLE_DEVICE inline T texture_grad_components(cons
 
 template <typename T> CUDA_CALLABLE inline T texture_grad_texel(const texture1d_t& tex, int level, texture_grad_index x)
 {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     const int width = texture_mip_dim(tex.width, level);
     x = cuda_texture_grad_index(x, width, tex.get_address_mode_u(), tex.get_use_normalized_coords());
     if (x < 0 || x >= width)
         return texture_sample_helper<T>::zero();
+#if defined(__HIP_DEVICE_COMPILE__)
+    if (tex.get_num_mip_levels() == 1) {
+        float u = float(x) + 0.5f;
+        if (tex.get_use_normalized_coords())
+            u /= float(width);
+        const float4 fetched = tex1D<float4>(reinterpret_cast<hipTextureObject_t>(tex.tex), u);
+        return texture_grad_components<T>(vec4f(fetched.x, fetched.y, fetched.z, fetched.w));
+    }
+#endif
     return texture_grad_components<T>(cuda_texture_grad_fetch_protected(tex.tex, level, x, 0));
 #else
     return cpu_texture_grad_texel<T>((const Texture*)tex.tex, level, x);
@@ -1353,7 +1381,7 @@ template <typename T> CUDA_CALLABLE inline T texture_grad_texel(const texture1d_
 template <typename T>
 CUDA_CALLABLE inline T texture_grad_texel(const texture2d_t& tex, int level, texture_grad_index x, texture_grad_index y)
 {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     const int width = texture_mip_dim(tex.width, level);
     const int height = texture_mip_dim(tex.height, level);
     x = cuda_texture_grad_index(x, width, tex.get_address_mode_u(), tex.get_use_normalized_coords());
@@ -1370,7 +1398,7 @@ template <typename T>
 CUDA_CALLABLE inline T
 texture_grad_texel(const texture3d_t& tex, int level, texture_grad_index x, texture_grad_index y, texture_grad_index z)
 {
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     const int width = texture_mip_dim(tex.width, level);
     const int height = texture_mip_dim(tex.height, level);
     const int depth = texture_mip_dim(tex.depth, level);
@@ -1576,7 +1604,7 @@ CUDA_CALLABLE void adj_texture_sample(
     if (tex.tex == 0)
         return;
 
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     u = texture_grad_periodic_coord(u, tex.get_use_normalized_coords(), tex.get_address_mode_u());
 #endif
 
@@ -1631,7 +1659,7 @@ CUDA_CALLABLE void adj_texture_sample(
     if (tex.tex == 0)
         return;
 
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     u = texture_grad_periodic_coord(u, tex.get_use_normalized_coords(), tex.get_address_mode_u());
     v = texture_grad_periodic_coord(v, tex.get_use_normalized_coords(), tex.get_address_mode_v());
 #endif
@@ -1704,7 +1732,7 @@ CUDA_CALLABLE void adj_texture_sample(
     if (tex.tex == 0)
         return;
 
-#if defined(__CUDA_ARCH__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     u = texture_grad_periodic_coord(u, tex.get_use_normalized_coords(), tex.get_address_mode_u());
     v = texture_grad_periodic_coord(v, tex.get_use_normalized_coords(), tex.get_address_mode_v());
     w = texture_grad_periodic_coord(w, tex.get_use_normalized_coords(), tex.get_address_mode_w());

@@ -7,6 +7,10 @@
 
 #include "warp.h"
 
+#if WP_ENABLE_HIP
+#define WP_DISABLE_CUBQL 1
+#endif
+
 #include "bvh.h"
 #include "error.h"
 

@@ -1,0 +1,300 @@
+// SPDX-License-Identifier: Apache-2.0
+
+#pragma once
+
+#if !defined(WP_ENABLE_HIP) && !defined(__HIPCC__)
+#error "hip_util.h should only be included in HIP builds."
+#endif
+
+#include <hip/hip_runtime.h>
+#include <hip/hip_runtime_api.h>
+#include <hip/hiprtc.h>
+
+#include <stdint.h>
+
+#ifndef CUDA_VERSION
+#define CUDA_VERSION 12000
+#endif
+#ifndef WP_HIP_ARCH
+#define WP_HIP_ARCH "gfx936"
+#endif
+#ifndef WP_HIP_INCLUDE_DIR
+#define WP_HIP_INCLUDE_DIR "/opt/dtk/include"
+#endif
+#ifndef CUDA_SUCCESS
+#define CUDA_SUCCESS hipSuccess
+#endif
+#ifndef CUDAAPI
+#define CUDAAPI
+#endif
+#ifndef CUDART_CB
+#define CUDART_CB
+#endif
+#ifndef CU_GET_PROC_ADDRESS_DEFAULT
+#define CU_GET_PROC_ADDRESS_DEFAULT 0
+#endif
+#ifndef CU_IPC_HANDLE_SIZE
+#define CU_IPC_HANDLE_SIZE sizeof(CUipcMemHandle)
+#endif
+
+#define cudaSuccess hipSuccess
+#define cudaErrorInvalidValue hipErrorInvalidValue
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetLastError hipGetLastError
+#define cudaDeviceSynchronize hipDeviceSynchronize
+#define cudaGetDevice hipGetDevice
+#define cudaGetDeviceCount hipGetDeviceCount
+#define cudaGetDeviceProperties hipGetDeviceProperties
+#define cudaDeviceCanAccessPeer hipDeviceCanAccessPeer
+#define cudaStreamGetId hipStreamGetId
+#define cudaDestroySurfaceObject hipDestroySurfaceObject
+#define cudaGraphMemAllocNodeGetParams hipGraphMemAllocNodeGetParams
+#define cudaMallocManaged hipMallocManaged
+#define cudaDeviceGetDefaultMemPool hipDeviceGetDefaultMemPool
+#define cudaMemPoolSetAttribute hipMemPoolSetAttribute
+#define cudaMemPoolGetAttribute hipMemPoolGetAttribute
+#define cudaMemPoolGetAccess hipMemPoolGetAccess
+#define cudaMemPoolSetAccess hipMemPoolSetAccess
+#define cudaDeviceGetGraphMemAttribute hipDeviceGetGraphMemAttribute
+#define cudaDeviceGraphMemTrim hipDeviceGraphMemTrim
+#define cudaMemAttachGlobal hipMemAttachGlobal
+#define cudaStreamCaptureStatusNone hipStreamCaptureStatusNone
+#define cudaStreamCaptureStatusActive hipStreamCaptureStatusActive
+#define cudaMemPoolAttrReleaseThreshold hipMemPoolAttrReleaseThreshold
+#define cudaMemPoolAttrUsedMemCurrent hipMemPoolAttrUsedMemCurrent
+#define cudaMemPoolAttrUsedMemHigh hipMemPoolAttrUsedMemHigh
+#define cudaGraphMemAttrUsedMemCurrent hipGraphMemAttrUsedMemCurrent
+#define cudaMemAccessFlagsProtNone hipMemAccessFlagsProtNone
+#define cudaMemAccessFlagsProtReadWrite hipMemAccessFlagsProtReadWrite
+#define cudaMemLocationTypeDevice hipMemLocationTypeDevice
+#define cudaEventWaitExternal hipEventWaitExternal
+#define cudaEventRecordExternal hipEventRecordExternal
+#define cudaUserObjectCreate hipUserObjectCreate
+#define cudaGraphRetainUserObject hipGraphRetainUserObject
+#define cudaGraphInstantiateFlagAutoFreeOnLaunch hipGraphInstantiateFlagAutoFreeOnLaunch
+#define cudaStreamSetCaptureDependencies hipStreamSetCaptureDependencies
+#define cudaGraphExecMemcpyNodeSetParams1D hipGraphExecMemcpyNodeSetParams1D
+#define cudaUserObjectNoDestructorSync hipUserObjectNoDestructorSync
+#define cudaGraphUserObjectMove hipGraphUserObjectMove
+#define cudaPointerGetAttributes hipPointerGetAttributes
+#define cudaMemcpy hipMemcpy
+#define cudaMemcpyAsync hipMemcpyAsync
+#define cudaMemcpyDeviceToDevice hipMemcpyDeviceToDevice
+#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
+#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
+#define cudaMemcpyHostToHost hipMemcpyHostToHost
+#define cudaMemcpyDefault hipMemcpyDefault
+#define cudaMemset hipMemset
+#define cudaMemsetAsync hipMemsetAsync
+#define cudaMalloc hipMalloc
+#define cudaMallocHost hipHostMalloc
+#define cudaFree hipFree
+#define cudaFreeHost hipHostFree
+#define cudaMallocAsync hipMallocAsync
+#define cudaFreeAsync hipFreeAsync
+#define cudaStreamSynchronize hipStreamSynchronize
+#define cudaStreamIsCapturing hipStreamIsCapturing
+#define cudaStreamBeginCapture hipStreamBeginCapture
+#define cudaStreamEndCapture hipStreamEndCapture
+#define cudaStreamGetFlags hipStreamGetFlags
+#define cudaStreamNonBlocking hipStreamNonBlocking
+#define cudaEventCreate hipEventCreate
+#define cudaEventRecord hipEventRecord
+#define cudaEventSynchronize hipEventSynchronize
+#define cudaEventElapsedTime hipEventElapsedTime
+#define cudaEventDestroy hipEventDestroy
+#define cudaMemAdvise hipMemAdvise
+#define cudaMemPrefetchAsync hipMemPrefetchAsync
+#define cudaFuncSetAttribute hipFuncSetAttribute
+#define cudaFuncAttributeMaxDynamicSharedMemorySize hipFuncAttributeMaxDynamicSharedMemorySize
+#define CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES
+#define CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES HIP_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES
+#define CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK HIP_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK
+#define CU_FUNC_ATTRIBUTE_NUM_REGS HIP_FUNC_ATTRIBUTE_NUM_REGS
+#define CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES HIP_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES
+#define CU_DEVICE_ATTRIBUTE_PAGEABLE_MEMORY_ACCESS hipDeviceAttributePageableMemoryAccess
+#define CU_DEVICE_ATTRIBUTE_DIRECT_MANAGED_MEM_ACCESS_FROM_HOST hipDeviceAttributeDirectManagedMemAccessFromHost
+#define CU_DEVICE_ATTRIBUTE_HOST_NATIVE_ATOMIC_SUPPORTED hipDeviceAttributeHostNativeAtomicSupported
+#define CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY hipDeviceAttributeManagedMemory
+#define CU_POINTER_ATTRIBUTE_MEMORY_TYPE HIP_POINTER_ATTRIBUTE_MEMORY_TYPE
+#define CU_POINTER_ATTRIBUTE_IS_MANAGED HIP_POINTER_ATTRIBUTE_IS_MANAGED
+#define CU_STREAM_DEFAULT hipStreamDefault
+#define CU_EVENT_DEFAULT hipEventDefault
+#define CU_EVENT_DISABLE_TIMING hipEventDisableTiming
+#define CU_EVENT_RECORD_DEFAULT 0
+#define CU_EVENT_WAIT_DEFAULT 0
+#define CU_IPC_MEM_LAZY_ENABLE_PEER_ACCESS hipIpcMemLazyEnablePeerAccess
+#define CU_STREAM_CAPTURE_STATUS_NONE hipStreamCaptureStatusNone
+#define CU_STREAM_CAPTURE_STATUS_ACTIVE hipStreamCaptureStatusActive
+#define cudaGraphDestroy hipGraphDestroy
+#define cudaGraphExecDestroy hipGraphExecDestroy
+#define cudaGraphAddMemFreeNode hipGraphAddMemFreeNode
+#define cudaGraphAddMemcpyNode1D hipGraphAddMemcpyNode1D
+#define cudaGraphAddEmptyNode hipGraphAddEmptyNode
+#define cudaGraphInstantiateWithFlags hipGraphInstantiateWithFlags
+#define cudaGraphUpload hipGraphUpload
+#define cudaGraphLaunch hipGraphLaunch
+#define cudaGraphGetNodes hipGraphGetNodes
+#define cudaGraphChildGraphNodeGetGraph hipGraphChildGraphNodeGetGraph
+#define cudaGraphAddChildGraphNode hipGraphAddChildGraphNode
+#define cudaGraphDebugDotPrint hipGraphDebugDotPrint
+#define cudaGraphRetainUserObject hipGraphRetainUserObject
+#define cudaUserObjectCreate hipUserObjectCreate
+#define cudaThreadExchangeStreamCaptureMode hipThreadExchangeStreamCaptureMode
+#define cudaStreamCaptureModeGlobal hipStreamCaptureModeGlobal
+#define cudaStreamCaptureModeRelaxed hipStreamCaptureModeRelaxed
+#define cudaStreamCaptureModeThreadLocal hipStreamCaptureModeThreadLocal
+#define CUDA_ERROR_INVALID_VALUE hipErrorInvalidValue
+#define CUDA_ERROR_NOT_INITIALIZED hipErrorNotInitialized
+#define CUDA_ERROR_NOT_READY hipErrorNotReady
+#define CUDA_ERROR_NOT_SUPPORTED hipErrorNotSupported
+#define CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED hipErrorPeerAccessAlreadyEnabled
+#define CUDA_ERROR_PEER_ACCESS_NOT_ENABLED hipErrorPeerAccessNotEnabled
+
+#define nvrtcResult hiprtcResult
+#define nvrtcProgram hiprtcProgram
+#define NVRTC_SUCCESS HIPRTC_SUCCESS
+#define nvrtcGetErrorString hiprtcGetErrorString
+#define nvrtcCreateProgram hiprtcCreateProgram
+#define nvrtcCompileProgram hiprtcCompileProgram
+#define nvrtcDestroyProgram hiprtcDestroyProgram
+#define nvrtcGetProgramLogSize hiprtcGetProgramLogSize
+#define nvrtcGetProgramLog hiprtcGetProgramLog
+#define nvrtcGetPTXSize hiprtcGetCodeSize
+#define nvrtcGetPTX hiprtcGetCode
+#define nvrtcGetCUBINSize hiprtcGetCodeSize
+#define nvrtcGetCUBIN hiprtcGetCode
+#define nvrtcVersion hiprtcVersion
+
+using cudaError_t = hipError_t;
+using cudaStream_t = hipStream_t;
+using cudaEvent_t = hipEvent_t;
+using cudaDeviceProp = hipDeviceProp_t;
+using cudaPointerAttributes = hipPointerAttribute_t;
+using cudaMemcpyKind = hipMemcpyKind;
+using cudaStreamCaptureStatus = hipStreamCaptureStatus;
+using cudaStreamCaptureMode = hipStreamCaptureMode;
+using cudaSurfaceObject_t = hipSurfaceObject_t;
+using cudaMemAllocNodeParams = hipMemAllocNodeParams;
+using cudaMemPool_t = hipMemPool_t;
+using cudaMemAccessFlags = hipMemAccessFlags;
+using cudaMemLocation = hipMemLocation;
+using cudaMemAccessDesc = hipMemAccessDesc;
+using cudaGraphMemAttributeType = hipGraphMemAttributeType;
+using cudaUserObject_t = hipUserObject_t;
+using cudaGraph_t = hipGraph_t;
+using cudaGraphNode_t = hipGraphNode_t;
+using cudaGraphExec_t = hipGraphExec_t;
+using CUdevice = hipDevice_t;
+using CUcontext = hipCtx_t;
+using CUstream = hipStream_t;
+using CUevent = hipEvent_t;
+using CUresult = hipError_t;
+using CUmodule = void*;
+using CUfunction = void*;
+using CUdeviceptr = hipDeviceptr_t;
+using CUuuid = hipUUID;
+using CUdevice_attribute = hipDeviceAttribute_t;
+using CUfunction_attribute = hipFunction_attribute;
+using CUstreamCaptureStatus = hipStreamCaptureStatus;
+using CUgraph = hipGraph_t;
+using CUgraphNode = hipGraphNode_t;
+using CUgraphExec = hipGraphExec_t;
+using CUgraphNodeType = hipGraphNodeType;
+using CUarray = hipArray_t;
+using CUmipmappedArray = hipMipmappedArray_t;
+using CUgraphicsResource = hipGraphicsResource_t;
+using CUpointer_attribute = hipPointer_attribute;
+using CUmemoryPool = hipMemPool_t;
+using cuuint64_t = uint64_t;
+using CUmemcpyAttributes = hipMemcpyAttributes;
+using CUgraphEdgeData = hipGraphEdgeData;
+using CUoccupancyB2DSize = size_t (*)(int);
+using CUDA_ARRAY_DESCRIPTOR = HIP_ARRAY_DESCRIPTOR;
+using CUDA_ARRAY3D_DESCRIPTOR = HIP_ARRAY3D_DESCRIPTOR;
+using CUDA_MEMCPY2D = hip_Memcpy2D;
+using CUDA_MEMCPY3D = HIP_MEMCPY3D;
+using CUarray_format = hipArray_Format;
+using CUDA_RESOURCE_DESC = hipResourceDesc;
+using CUDA_TEXTURE_DESC = hipTextureDesc;
+using CUDA_RESOURCE_VIEW_DESC = hipResourceViewDesc;
+using CUtexObject = hipTextureObject_t;
+using CUipcEventHandle = hipIpcEventHandle_t;
+using CUipcMemHandle = hipIpcMemHandle_t;
+
+#define CU_DEVICE_ATTRIBUTE_PAGEABLE_MEMORY_ACCESS hipDeviceAttributePageableMemoryAccess
+#define CU_DEVICE_ATTRIBUTE_DIRECT_MANAGED_MEM_ACCESS_FROM_HOST hipDeviceAttributeDirectManagedMemAccessFromHost
+#define CU_DEVICE_ATTRIBUTE_HOST_NATIVE_ATOMIC_SUPPORTED hipDeviceAttributeHostNativeAtomicSupported
+#define CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY hipDeviceAttributeManagedMemory
+#define CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS hipDeviceAttributeConcurrentManagedAccess
+#define CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED hipDeviceAttributeMemoryPoolsSupported
+#define CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT hipDeviceAttributeMultiprocessorCount
+#define CU_DEVICE_ATTRIBUTE_INTEGRATED hipDeviceAttributeIntegrated
+#define CU_DEVICE_ATTRIBUTE_IPC_EVENT_SUPPORTED hipDeviceAttributeIpcEventSupported
+#define CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN hipDeviceAttributeMaxSharedMemoryPerBlock
+#define CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR hipDeviceAttributeComputeCapabilityMajor
+#define CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR hipDeviceAttributeComputeCapabilityMinor
+#define CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID hipDeviceAttributePciDomainID
+#define CU_DEVICE_ATTRIBUTE_PCI_BUS_ID hipDeviceAttributePciBusId
+#define CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID hipDeviceAttributePciDeviceId
+#define CU_POINTER_ATTRIBUTE_MEMORY_TYPE HIP_POINTER_ATTRIBUTE_MEMORY_TYPE
+#define CU_POINTER_ATTRIBUTE_IS_MANAGED HIP_POINTER_ATTRIBUTE_IS_MANAGED
+#define CU_POINTER_ATTRIBUTE_MEMPOOL_HANDLE HIP_POINTER_ATTRIBUTE_MEMPOOL_HANDLE
+#define CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING hipDeviceAttributeUnifiedAddressing
+#define CU_MEMORYTYPE_HOST hipMemoryTypeHost
+#define CU_MEMORYTYPE_DEVICE hipMemoryTypeDevice
+#define CU_MEMORYTYPE_ARRAY hipMemoryTypeArray
+#define CU_STREAM_CAPTURE_STATUS_NONE hipStreamCaptureStatusNone
+#define CU_STREAM_CAPTURE_STATUS_ACTIVE hipStreamCaptureStatusActive
+#define CU_EVENT_WAIT_EXTERNAL hipEventWaitExternal
+#define CU_EVENT_RECORD_EXTERNAL hipEventRecordExternal
+#define CU_STREAM_CAPTURE_STATUS_INVALIDATED hipStreamCaptureStatusInvalidated
+#define CU_GRAPH_NODE_TYPE_KERNEL hipGraphNodeTypeKernel
+#define CU_GRAPH_NODE_TYPE_MEMCPY hipGraphNodeTypeMemcpy
+#define CU_GRAPH_NODE_TYPE_MEMSET hipGraphNodeTypeMemset
+#define CU_GRAPH_NODE_TYPE_HOST hipGraphNodeTypeHost
+#define CU_GRAPH_NODE_TYPE_GRAPH hipGraphNodeTypeGraph
+#define CU_GRAPH_NODE_TYPE_EMPTY hipGraphNodeTypeEmpty
+#define CU_GRAPH_NODE_TYPE_EVENT_WAIT hipGraphNodeTypeWaitEvent
+#define CU_GRAPH_NODE_TYPE_EVENT_RECORD hipGraphNodeTypeEventRecord
+#define CU_GRAPH_NODE_TYPE_MEM_ALLOC hipGraphNodeTypeMemAlloc
+#define CU_GRAPH_NODE_TYPE_MEM_FREE hipGraphNodeTypeMemFree
+#define CU_AD_FORMAT_UNSIGNED_INT8 HIP_AD_FORMAT_UNSIGNED_INT8
+#define CU_AD_FORMAT_UNSIGNED_INT16 HIP_AD_FORMAT_UNSIGNED_INT16
+#define CU_AD_FORMAT_UNSIGNED_INT32 HIP_AD_FORMAT_UNSIGNED_INT32
+#define CU_AD_FORMAT_SIGNED_INT8 HIP_AD_FORMAT_SIGNED_INT8
+#define CU_AD_FORMAT_SIGNED_INT16 HIP_AD_FORMAT_SIGNED_INT16
+#define CU_AD_FORMAT_SIGNED_INT32 HIP_AD_FORMAT_SIGNED_INT32
+#define CU_AD_FORMAT_HALF HIP_AD_FORMAT_HALF
+#define CU_AD_FORMAT_FLOAT HIP_AD_FORMAT_FLOAT
+#define CUDA_ARRAY3D_SURFACE_LDST hipArraySurfaceLoadStore
+#define CU_TRSF_NORMALIZED_COORDINATES hipTextureType2D
+#define CU_RESOURCE_TYPE_ARRAY hipResourceTypeArray
+#define CU_MEMCPY_SRC_ACCESS_ORDER_STREAM hipMemcpySrcAccessOrderStream
+#define CU_STREAM_SET_CAPTURE_DEPENDENCIES hipStreamSetCaptureDependencies
+#define CU_STREAM_ADD_CAPTURE_DEPENDENCIES hipStreamAddCaptureDependencies
+
+#define cuInit hipInit
+#define cuCtxGetCurrent hipCtxGetCurrent
+#define cuCtxSetCurrent hipCtxSetCurrent
+#define cuDeviceGetCount hipGetDeviceCount
+#define cuDeviceGet hipDeviceGet
+#define cuDeviceGetName hipDeviceGetName
+#define cuDeviceGetAttribute hipDeviceGetAttribute
+#define cuMemGetInfo hipMemGetInfo
+#define cuStreamGetCaptureInfo hipStreamGetCaptureInfo
+#define cuStreamUpdateCaptureDependencies hipStreamUpdateCaptureDependencies
+#define cuGraphGetNodes hipGraphGetNodes
+#define cuGraphNodeGetDependentNodes hipGraphNodeGetDependentNodes
+#define cuGraphNodeGetType hipGraphNodeGetType
+#define nvrtcGetNumSupportedArchs _wp_hiprtc_get_num_supported_archs
+#define nvrtcGetSupportedArchs _wp_hiprtc_get_supported_archs
+
+static inline hiprtcResult _wp_hiprtc_get_num_supported_archs(int* count)
+{
+    if (count)
+        *count = 0;
+    return HIPRTC_SUCCESS;
+}
+
+static inline hiprtcResult _wp_hiprtc_get_supported_archs(int*) { return HIPRTC_SUCCESS; }

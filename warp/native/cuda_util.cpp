@@ -6,6 +6,10 @@
 #include "cuda_util.h"
 #include "error.h"
 
+#if WP_ENABLE_HIP
+#include "cuda_util_hip.inl"
+#else
+
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -1085,4 +1089,5 @@ CUresult cuMipmappedArrayGetLevel_f(CUarray* pLevelArray, CUmipmappedArray hMipm
                                         : DRIVER_ENTRY_POINT_ERROR;
 }
 
+#endif  // WP_ENABLE_HIP
 #endif  // WP_ENABLE_CUDA

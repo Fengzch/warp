@@ -48,7 +48,15 @@ def hip_arch_flags(args) -> str:
     arches = [a for a in re.split(r"[,;\s]+", raw) if a]
     if not arches or any(not re.fullmatch(r"gfx[0-9a-f]+(?::(?:xnack|sramecc)[+-])*", a) for a in arches):
         raise RuntimeError(f"Invalid HIP target architectures: {raw}")
-    return " ".join(f"--offload-arch={a}" for a in dict.fromkeys(arches))
+    unique_arches = list(dict.fromkeys(arches))
+    return " ".join(f"--offload-arch={a}" for a in unique_arches)
+
+
+def hip_arch_name(args) -> str:
+    arches = hip_arch_flags(args).split()
+    if len(arches) != 1:
+        raise RuntimeError("Warp HIP runtime JIT currently requires exactly one --hip-arch target")
+    return arches[0].removeprefix("--offload-arch=")
 
 # Echoed by our wrapper command before dumping the environment; the MSVC
 # environment script does not emit it.
@@ -625,6 +633,8 @@ def build_dll_for_arch(
     cuda_home = args.cuda_path
     cuda_cmd = None
     hip_enabled = bool(getattr(args, "enable_hip", False) and cu_paths)
+    if hip_enabled:
+        hip_arch_name(args)
     hipcc_cmd = shlex.quote(os.path.join(args.rocm_path, "bin", "hipcc")) if hip_enabled else None
     nvcc_opts = []
 
@@ -715,6 +725,7 @@ def build_dll_for_arch(
 
     # is the library being built with CUDA enabled?
     cuda_enabled = "WP_ENABLE_CUDA=1" if (cu_paths is not None) else "WP_ENABLE_CUDA=0"
+    hip_define = "-DWP_ENABLE_HIP=1" if hip_enabled else ""
 
     if args.libmathdx_path:
         libmathdx_includes = f' -I"{args.libmathdx_path}/include"'
@@ -877,9 +888,9 @@ def build_dll_for_arch(
             else:
                 version = ""
 
-        cpp_flags = f'-Werror -Wuninitialized {version} --std=c++17 -fno-rtti -DWP_BUILD_DLL -D{cuda_enabled} -D{mathdx_enabled} -D{cuda_compat_enabled} -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -D_GLIBCXX_USE_CXX11_ABI=0 -I"{native_dir}" {includes} '
+        cpp_flags = f'-Werror -Wuninitialized {version} --std=c++17 -fno-rtti -DWP_BUILD_DLL -D{cuda_enabled} {hip_define} -D{mathdx_enabled} -D{cuda_compat_enabled} -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -D_GLIBCXX_USE_CXX11_ABI=0 -I"{native_dir}" {includes} '
         if hip_enabled:
-            cpp_flags += " -D__HIP_PLATFORM_AMD__ "
+            cpp_flags += f' -D__HIP_PLATFORM_AMD__ -DWP_HIP_ARCH=\\"{hip_arch_name(args)}\\" -DWP_HIP_INCLUDE_DIR=\\"{args.rocm_path}/include\\" '
 
         if mode == "debug":
             cpp_flags += "-Og -g -D_DEBUG -DWP_ENABLE_DEBUG=1"
@@ -935,7 +946,8 @@ def build_dll_for_arch(
                         cuda_cmd = (
                             f'{hipcc_cmd} -x hip -std=c++17 {hip_mode} {hip_arch_flags(args)} '
                             f'-fPIC -fvisibility=hidden -D_GLIBCXX_USE_CXX11_ABI=0 -DWP_BUILD_DLL '
-                            f'-DWP_ENABLE_CUDA=1 -D__HIP_PLATFORM_AMD__ -D{mathdx_enabled} '
+                            f'-DWP_ENABLE_CUDA=1 -DWP_ENABLE_HIP=1 -D__HIP_PLATFORM_AMD__ '
+                            f'-DWP_HIP_ARCH=\\"{hip_arch_name(args)}\\" -DWP_HIP_INCLUDE_DIR=\\"{args.rocm_path}/include\\" -D{mathdx_enabled} '
                             f'-I"{native_dir}" {includes} {hip_options} -o "{cu_out}" -c "{cu_path}"'
                         )
                     elif cuda_compiler == "nvcc":

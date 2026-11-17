@@ -13,10 +13,10 @@
 #define __restrict__ __restrict
 #endif
 
-#if !defined(__CUDACC__)
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #define CUDA_CALLABLE
 #define CUDA_CALLABLE_DEVICE
-#else
+#elif defined(__CUDACC__) || defined(__HIPCC__)
 #define CUDA_CALLABLE __host__ __device__
 #define CUDA_CALLABLE_DEVICE __device__
 #endif
@@ -73,7 +73,9 @@
 #define M_SQRT_PI_2 0.88622692545275801364908374167057  // sqrt(pi)/2
 #endif
 
-#if defined(__CUDACC__) && !defined(_MSC_VER)
+#if defined(__HIPCC__) && !defined(_MSC_VER)
+__device__ inline void __debugbreak() { __builtin_trap(); }
+#elif defined(__CUDACC__) && !defined(_MSC_VER)
 __device__ inline void __debugbreak() { __brkpt(); }
 #endif
 
@@ -328,7 +330,7 @@ inline CUDA_CALLABLE bfloat16 approx_div(bfloat16 a, bfloat16 b) { return bfloat
 inline CUDA_CALLABLE unsigned short wp_float_to_bfloat16_bits_sw(float x)
 {
     unsigned int bits;
-    memcpy(&bits, &x, sizeof(bits));
+    __builtin_memcpy(&bits, &x, sizeof(bits));
     // NaN or Inf (exponent all 1s) — truncate, no rounding needed.
     // For NaN, ensure the quiet-NaN bit (bit 6 of bfloat16 mantissa) is set so
     // that NaN values whose top 7 mantissa bits are zero don't become infinities.
@@ -348,7 +350,7 @@ inline CUDA_CALLABLE float wp_bfloat16_bits_to_float_sw(unsigned short u)
 {
     float val;
     unsigned int bits = static_cast<unsigned int>(u) << 16;
-    memcpy(&val, &bits, sizeof(val));
+    __builtin_memcpy(&val, &bits, sizeof(val));
     return val;
 }
 #endif  // WP_NO_BFLOAT16

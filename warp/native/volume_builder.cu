@@ -10,9 +10,14 @@
 #include <algorithm>
 #include <limits>
 
+#if WP_ENABLE_HIP
+#include <hipcub/hipcub.hpp>
+namespace cub = hipcub;
+#else
 #include <cub/cub.cuh>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
+#endif
 
 namespace {
 

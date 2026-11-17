@@ -19,10 +19,15 @@
 
 #define THRUST_IGNORE_CUB_VERSION_CHECK
 
+#if WP_ENABLE_HIP
+#include <hipcub/hipcub.hpp>
+namespace cub = hipcub;
+#else
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_run_length_encode.cuh>
 #include <cub/device/device_scan.cuh>
 #include <cub/device/device_select.cuh>
+#endif
 
 extern CUcontext get_current_context();
 
@@ -106,6 +111,11 @@ template <typename T, int BlockSize> struct BlockIterator {
     CUDA_CALLABLE BlockIterator operator+(difference_type offset) const
     {
         return BlockIterator(ptr + offset * stride, stride);
+    }
+
+    CUDA_CALLABLE BlockIterator operator-(difference_type offset) const
+    {
+        return BlockIterator(ptr - offset * stride, stride);
     }
 
     CUDA_CALLABLE difference_type operator-(const BlockIterator& other) const { return (ptr - other.ptr) / stride; }

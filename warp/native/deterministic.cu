@@ -17,7 +17,12 @@
 
 #include <type_traits>
 
+#if WP_ENABLE_HIP
+#include <hipcub/hipcub.hpp>
+namespace cub = hipcub;
+#else
 #include <cub/cub.cuh>
+#endif
 #include <thrust/iterator/transform_iterator.h>
 
 namespace {

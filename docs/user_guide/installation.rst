@@ -218,10 +218,11 @@ The Linux build driver accepts AMD ROCm and Hygon DTK SDK paths with an explicit
 
     $ python build_lib.py --hip --rocm-path /opt/dtk --hip-arch gfx936 --no-use-libmathdx --no-standalone
 
-This is an experimental build entry point, not a supported installation recipe yet. The native runtime
-and JIT compatibility layer are still being ported and the command does not currently produce a working
-HIP runtime. ``--no-standalone`` omits the separate CPU JIT backend, so it is not suitable for a complete
-installation. Hygon DTK's LLVM libraries must not be substituted for Warp's pinned LLVM SDK.
+This is an experimental developer build, not a supported installation recipe. The native runtime and JIT
+run focused workloads with Hygon DTK 26.04 on ``gfx936``, but mipmapped texture LOD, broad test coverage,
+other architectures, and wheel packaging remain incomplete. ``--no-standalone`` omits the separate CPU JIT
+backend, so it is not suitable for a complete installation. Hygon DTK's LLVM libraries must not be
+substituted for Warp's pinned LLVM SDK.
 
 HIP is opt-in with ``--hip``; existing CUDA and CPU-only builds retain their defaults. The SDK can also
 be selected with ``ROCM_PATH``, ``ROCM_HOME``, or ``DTK_ROOT``. HIP target architectures must be specified
