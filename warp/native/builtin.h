@@ -335,7 +335,7 @@ inline CUDA_CALLABLE unsigned short wp_float_to_bfloat16_bits_sw(float x)
 #else
     memcpy(&bits, &x, sizeof(bits));
 #endif
-    // NaN or Inf (exponent all 1s) — truncate, no rounding needed.
+    // NaN or Inf (exponent all 1s): truncate, no rounding needed.
     // For NaN, ensure the quiet-NaN bit (bit 6 of bfloat16 mantissa) is set so
     // that NaN values whose top 7 mantissa bits are zero don't become infinities.
     if ((bits & 0x7F800000) == 0x7F800000) {
